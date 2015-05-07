@@ -1,48 +1,39 @@
 #define DEBUG 1
-#include <iostream>
+#if DEBUG
+    #include <iostream>
+#endif
 
 #include <deque>          // std::deque
 #include <queue>          // std::queue
 #include <map>            // std::map
-#include <vector>         // std::vector
 
-template<class InputType, class OutputType> class Memoizer {
+
+// Returns a function which can be called in place of the input function f
+// to memoize the function result for the cacheSize most recent distinct arguments
+using std::function;
+template<typename InputType, typename OutputType>
+function<OutputType(InputType)> memoize(function<OutputType(InputType)> f, int cacheSize) {
+
     typedef typename std::deque<InputType> CacheContainerType;
-    typedef typename std::queue<InputType> CacheType;
-    typedef typename std::map<InputType, OutputType> MapType;
-    typedef OutputType (*FunctionType) (InputType);
+    typedef typename std::queue<InputType> ValuesCachedType;
+    typedef typename std::map<InputType, OutputType> CacheType;
 
-    private:
-        int cacheSize;
-        CacheType queue;
-        MapType map;
-        FunctionType function;
+    if (cacheSize > 0) {                        // Cache is to be used
+        ValuesCachedType valuesCurrentlyCached;
+        CacheType cache;
+        return [=](InputType x) mutable -> OutputType {
+            OutputType result = f(x);
 
-    public:
-        Memoizer(FunctionType _function, int _cacheSize) : cacheSize(_cacheSize) {
-            function = _function;
-            if ( cacheSize > 0 ) {
-                queue = CacheType();
-                map = MapType();
-            }
-        }
+            typename CacheType::iterator it = cache.find(x);
 
-        OutputType operator () (InputType x) {
-            if ( cacheSize <= 0 ) {
-                return function(x);
-            }
+            if (it == cache.end()) {            // Item is not in the cache
+                result = f(x);                  // Evaluate function's return value
 
-            OutputType result;
-            typename MapType::iterator it = map.find(x);
-            if (it == map.end()) {  // Item is not in the cache
-
-                result = function(x);      // Evaluate function's return value
-
-                if ( map.size() == cacheSize ) {
+                if ( cache.size() == cacheSize ) { // Cache is at capacity
                     // Remove the oldest cached item
-                    InputType discardedItem = queue.front();
-                    queue.pop();
-                    map.erase(discardedItem);
+                    InputType discardedItem = valuesCurrentlyCached.front();
+                    valuesCurrentlyCached.pop();
+                    cache.erase(discardedItem);
                     #if DEBUG
                         std::cout << "Item removed from cache" << std::endl;
                     #endif
@@ -50,18 +41,21 @@ template<class InputType, class OutputType> class Memoizer {
                 #if DEBUG
                     std::cout << "Item added to cache" << std::endl;
                 #endif
-                map[x] = result;    // Cache return value
-                queue.push(x);      // Document that it's cached
+                cache[x] = result;              // Cache return value
+                valuesCurrentlyCached.push(x);  // Document that it's cached
             }
-            else {                  // Item is in the cache
-                result = map[x];    // Retrieve the cached value
+            else {                              // Item is in the cache
+                result = cache[x];              // Retrieve the cached value
                 #if DEBUG
                     std::cout << "Item retrieved from cache" << std::endl;
                 #endif
             }
             return result;
-        }
-};
+        };
+    }
+    return f;                                   // Case where no cache to be used
+}
+
 
 int f(int x){
     return x*2;
@@ -86,9 +80,11 @@ int* h(std::vector<T>* x){
     }
 }
 
+#include <iostream>
+#include <vector>
 int main(int argc, char** argv){
 
-    Memoizer<int,int> mem_f = Memoizer<int,int>(f, 2);
+    auto mem_f = memoize<int, int>(f, 2);
     int x = 4;
     std::cout << mem_f(x) << std::endl;     // f(x) is cached
     std::cout << mem_f(x) << std::endl;     // f(x) is retrieved
@@ -103,7 +99,7 @@ int main(int argc, char** argv){
 
 
     std::cout << "\n\n";
-    Memoizer<char*, int> mem_g(g, 1);
+    auto mem_g = memoize<char*, int>(g, 1);
     char c = 'c';
     std::cout << mem_g(&c) << std::endl;
 
@@ -114,7 +110,7 @@ int main(int argc, char** argv){
 
 
     std::cout << "\n\n";
-    Memoizer<std::vector<int>*, int*> mem_h(h<int>,2);
+    auto mem_h = memoize<std::vector<int>*, int*>(h<int>,2);
     std::vector<int> v;
     v.push_back(4);
 
